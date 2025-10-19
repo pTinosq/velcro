@@ -1,0 +1,5 @@
+/* Local styles are only applied to the post in this folder */
+/* They let you have full control over the look and feel of each individual post */
+.local-style {
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+}

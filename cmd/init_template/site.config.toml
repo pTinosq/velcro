@@ -1,0 +1,16 @@
+# Build output
+baseHTML = "./src/base.html"
+outputDir = "dist"
+
+# Directories
+[dirs]
+root = "./src"
+pages = "./src/pages"
+posts = "./src/posts"
+assets = "./src/assets"
+styles = "./src/styles"
+scripts = "./src/scripts"
+components = "./src/components"
+
+# Draft handling
+draftPrefix = "_"

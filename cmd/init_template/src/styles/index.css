@@ -1,0 +1,25 @@
+/* Global styles are applied to all pages across your blog. */
+/* They let you have full control over the look and feel of your entire site. */
+html,
+body {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Roboto', sans-serif;
+}
+
+body {
+    padding-left: 48px;
+    padding-right: 48px;
+}
+
+h1 {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+}
+
+p {
+    font-size: 16px;
+    color: #333;
+}
