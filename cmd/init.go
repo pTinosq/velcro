@@ -27,7 +27,7 @@ var initCmd = &cobra.Command{
 		slog.Debug("Validating blog name", "blogName", blogName)
 		match, _ := regexp.MatchString("^[a-zA-Z0-9-_]+$", blogName)
 		if !match {
-			slog.Error("The blog name must contain only lowercase letters, numbers, and hyphens")
+			slog.Error("The blog name must contain only A-Z, a-z, 0-9, hyphens, and underscores")
 			return
 		}
 
