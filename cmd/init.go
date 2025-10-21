@@ -11,12 +11,7 @@ var initCmd = &cobra.Command{
 	Short: "Initialize a new Velcro blog",
 	Long:  `Initializes a new Velcro blog with a default template.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if isVerbose {
-			slog.SetLogLoggerLevel(slog.LevelDebug)
-		} else {
-			slog.SetLogLoggerLevel(slog.LevelInfo)
-		}
-
+		slog.Debug("⚙️ Initializing your Velcro blog...")
 		slog.Info("⚙️ Initializing your Velcro blog...")
 
 	},
@@ -24,5 +19,4 @@ var initCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().BoolP("verbose", "v", false, "Verbose output")
 }

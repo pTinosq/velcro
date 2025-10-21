@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"log/slog"
 	"os"
 
+	"github.com/lmittmann/tint"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +19,29 @@ examples and usage of using your application. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Set up logger with correct level based on verbose flag
+		w := os.Stderr
+		var level slog.Level
+		if isVerbose {
+			level = slog.LevelDebug
+		} else {
+			level = slog.LevelInfo
+		}
+
+		slog.SetDefault(slog.New(
+			tint.NewHandler(w, &tint.Options{
+				Level: level,
+				// Remove the time attribute from the output
+				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+					if a.Key == slog.TimeKey && len(groups) == 0 {
+						return slog.Attr{}
+					}
+					return a
+				},
+			}),
+		))
+	},
 }
 
 func Execute() {
