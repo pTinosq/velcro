@@ -63,7 +63,7 @@ var initCmd = &cobra.Command{
 
 func copyTemplateFiles(blogName string) error {
 	templateDir := "./cmd/init_template"
-	destDir := fmt.Sprintf("./%s", blogName)
+	destDir := filepath.Join(".", blogName)
 
 	return filepath.WalkDir(templateDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
