@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var isVerbose bool
+
 var rootCmd = &cobra.Command{
 	Use:   "velcro",
 	Short: "A brief description of your application",
@@ -26,4 +28,5 @@ func Execute() {
 
 func init() {
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.PersistentFlags().BoolVarP(&isVerbose, "verbose", "v", false, "verbose output")
 }
