@@ -1,6 +1,6 @@
 # Build output
-baseHTML = "./src/base.html"
-outputDir = "dist"
+base_html = "./src/base.html"
+output_dir = "dist"
 
 # Directories
 [dirs]
@@ -13,4 +13,4 @@ scripts = "./src/scripts"
 components = "./src/components"
 
 # Draft handling
-draftPrefix = "_"
+draft_prefix = "_"
