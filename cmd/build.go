@@ -3,6 +3,7 @@ package cmd
 import (
 	"log/slog"
 	"path/filepath"
+	"velcro/internal/build"
 	"velcro/internal/siteconfig"
 
 	"github.com/spf13/cobra"
@@ -17,8 +18,13 @@ var buildCmd = &cobra.Command{
 			slog.Error("Please provide a path to your site config")
 			return
 		}
-		siteConfigPath := args[0]
-		siteConfigPath = filepath.Join(siteConfigPath, "site.config.toml")
+		rootDir := args[0]
+
+		opts := &build.BuildOptions{
+			RootDir: rootDir,
+		}
+
+		siteConfigPath := filepath.Join(rootDir, "site.config.toml")
 
 		config, err := siteconfig.LoadSiteConfig(siteConfigPath)
 		if err != nil {
@@ -26,6 +32,14 @@ var buildCmd = &cobra.Command{
 			return
 		}
 		slog.Info("Site config loaded successfully", "config", config)
+
+		err = build.Run(config, opts)
+		if err != nil {
+			slog.Error("Failed to build site", "error", err)
+			return
+		}
+
+		slog.Info("Site built successfully")
 	},
 }
 
