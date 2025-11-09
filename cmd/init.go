@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"embed"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+//go:embed init_template
+var templateFS embed.FS
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -62,20 +66,17 @@ var initCmd = &cobra.Command{
 }
 
 func copyTemplateFiles(blogName string) error {
-	templateDir := "./cmd/init_template"
 	destDir := filepath.Join(".", blogName)
-
-	return filepath.WalkDir(templateDir, func(path string, d fs.DirEntry, err error) error {
+	return fs.WalkDir(templateFS, "init_template", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip .gitkeep files
 		if strings.HasSuffix(d.Name(), ".gitkeep") {
 			return nil
 		}
 
-		relPath, err := filepath.Rel(templateDir, path)
+		relPath, err := filepath.Rel("init_template", path)
 		if err != nil {
 			return err
 		}
@@ -89,34 +90,28 @@ func copyTemplateFiles(blogName string) error {
 		if d.IsDir() {
 			slog.Debug("Creating directory", "path", destPath)
 			return os.MkdirAll(destPath, 0755)
-		} else {
-			slog.Debug("Copying file", "from", path, "to", destPath)
-			return copyFile(path, destPath)
 		}
+
+		slog.Debug("Copying file", "from", path, "to", destPath)
+		srcFile, err := templateFS.Open(path)
+		if err != nil {
+			return err
+		}
+		defer srcFile.Close()
+
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return err
+		}
+
+		dstFile, err := os.Create(destPath)
+		if err != nil {
+			return err
+		}
+		defer dstFile.Close()
+
+		_, err = io.Copy(dstFile, srcFile)
+		return err
 	})
-}
-
-func copyFile(src, dst string) error {
-	// Create destination directory if it doesn't exist
-	dstDir := filepath.Dir(dst)
-	if err := os.MkdirAll(dstDir, 0755); err != nil {
-		return err
-	}
-
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, srcFile)
-	return err
 }
 
 func init() {

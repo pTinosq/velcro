@@ -33,11 +33,13 @@ You write your post, you build, and you publish. That is it.
 
 ## Development
 
-1. Clone the repository: `git clone https://github.com/pTinosq/velcro.git`
-2. Navigate to the project: `cd velcro`
-3. Install dependencies: `go mod download`
-4. Build: `go build -o velcro`
-5. Run commands: `./velcro init my-blog` or `go run main.go init my-blog`
+1. Clone the repo: `git clone https://github.com/pTinosq/velcro.git`
+2. `cd velcro`
+3. Install dependencies with `go mod download`
+4. Run `go run main.go`
+5. ???
+6. Profit
+7. Buid with `go build -o velcro`
 
 ## Contributing
 
