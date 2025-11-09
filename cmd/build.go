@@ -8,8 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// var isVerbose bool
-
 var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "Builds your Velcro blog",
