@@ -51,6 +51,20 @@ func Run(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
 		return err
 	}
 
+	slog.Info("Building component assets...")
+	err = buildComponentAssets(cfg, opts)
+	if err != nil {
+		slog.Error("Failed to build component assets", "error", err)
+		return err
+	}
+
+	slog.Info("Resolving paths...")
+	err = resolvePaths(cfg, opts)
+	if err != nil {
+		slog.Error("Failed to resolve paths", "error", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -176,6 +190,82 @@ func buildPosts(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
 	return nil
 }
 
+func buildComponentAssets(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
+	componentsDir := filepath.Join(opts.RootDir, cfg.Dirs.Components)
+
+	// Check if components directory exists
+	if _, err := os.Stat(componentsDir); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Read components directory
+	components, err := os.ReadDir(componentsDir)
+	if err != nil {
+		return err
+	}
+
+	// Track component names (without extension)
+	componentNames := make(map[string]bool)
+
+	for _, component := range components {
+		if component.IsDir() {
+			continue
+		}
+
+		name := component.Name()
+		ext := filepath.Ext(name)
+		baseName := strings.TrimSuffix(name, ext)
+
+		if ext == ".html" {
+			componentNames[baseName] = true
+		}
+	}
+
+	// Copy component CSS and JS files to output
+	outputStylesDir := filepath.Join(opts.RootDir, cfg.OutputDir, "styles")
+	outputScriptsDir := filepath.Join(opts.RootDir, cfg.OutputDir, "scripts")
+
+	for componentName := range componentNames {
+		// Copy CSS file if it exists
+		cssPath := filepath.Join(componentsDir, componentName+".css")
+		if _, err := os.Stat(cssPath); err == nil {
+			err := os.MkdirAll(outputStylesDir, 0755)
+			if err != nil {
+				return err
+			}
+			dstCSSPath := filepath.Join(outputStylesDir, componentName+".css")
+			info, err := os.Stat(cssPath)
+			if err != nil {
+				return err
+			}
+			err = copyFile(cssPath, dstCSSPath, info.Mode())
+			if err != nil {
+				return err
+			}
+		}
+
+		// Copy JS file if it exists
+		jsPath := filepath.Join(componentsDir, componentName+".js")
+		if _, err := os.Stat(jsPath); err == nil {
+			err := os.MkdirAll(outputScriptsDir, 0755)
+			if err != nil {
+				return err
+			}
+			dstJSPath := filepath.Join(outputScriptsDir, componentName+".js")
+			info, err := os.Stat(jsPath)
+			if err != nil {
+				return err
+			}
+			err = copyFile(jsPath, dstJSPath, info.Mode())
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func processDirectory(src, dst string, cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -282,11 +372,34 @@ func processHTMLFile(src, dst string, cfg *siteconfig.SiteConfig, opts *BuildOpt
 		content = []byte(baseHTML)
 	}
 
+	// Extract page/post identifier for data-page processing
+	var currentPageID string
+	if isFromPostsOrPages {
+		// Extract the page/post name from the source path
+		if relPath, err := filepath.Rel(absolutePostsDir, src); err == nil && !strings.HasPrefix(relPath, "..") {
+			// It's a post - get the post folder name
+			parts := strings.Split(relPath, string(filepath.Separator))
+			if len(parts) > 0 {
+				currentPageID = parts[0]
+			}
+		} else if relPath, err := filepath.Rel(absolutePagesDir, src); err == nil && !strings.HasPrefix(relPath, "..") {
+			// It's a page - get the page folder name
+			parts := strings.Split(relPath, string(filepath.Separator))
+			if len(parts) > 0 {
+				currentPageID = parts[0]
+			}
+		}
+	}
+
 	visited := make(map[string]bool)
-	processed, err := processIncludes(string(content), cfg, opts, visited, filepath.Dir(src))
+	componentAssets := make(map[string]bool) // Track component CSS/JS files
+	processed, err := processIncludes(string(content), cfg, opts, visited, filepath.Dir(src), currentPageID, componentAssets)
 	if err != nil {
 		return err
 	}
+
+	// Inject component CSS and JS files into the HTML
+	processed = injectComponentAssets(processed, componentAssets, cfg, opts)
 
 	err = validateHTML(processed, src)
 	if err != nil {
@@ -322,7 +435,7 @@ func validateHTML(content, filePath string) error {
 	return nil
 }
 
-func processIncludes(content string, cfg *siteconfig.SiteConfig, opts *BuildOptions, visited map[string]bool, currentDir string) (string, error) {
+func processIncludes(content string, cfg *siteconfig.SiteConfig, opts *BuildOptions, visited map[string]bool, currentDir string, currentPageID string, componentAssets map[string]bool) (string, error) {
 	includePattern := regexp.MustCompile(`<!--\s*include\s*=\s*"(@[^"]+)"\s*-->`)
 	var result strings.Builder
 	lastIndex := 0
@@ -358,11 +471,28 @@ func processIncludes(content string, cfg *siteconfig.SiteConfig, opts *BuildOpti
 				return "", fmt.Errorf("failed to read component %q: %w", componentName, err)
 			}
 
-			processedComponent, err := processIncludes(string(componentContent), cfg, opts, visited, componentsDir)
+			// Check for associated CSS and JS files
+			componentCSSPath := filepath.Join(componentsDir, componentName+".css")
+			componentJSPath := filepath.Join(componentsDir, componentName+".js")
+
+			if _, err := os.Stat(componentCSSPath); err == nil {
+				// CSS file exists, track it for injection
+				componentAssets["css:"+componentName] = true
+			}
+
+			if _, err := os.Stat(componentJSPath); err == nil {
+				// JS file exists, track it for injection
+				componentAssets["js:"+componentName] = true
+			}
+
+			processedComponent, err := processIncludes(string(componentContent), cfg, opts, visited, componentsDir, currentPageID, componentAssets)
 			if err != nil {
 				delete(visited, componentKey)
 				return "", err
 			}
+
+			// Process data-page attributes in the component
+			processedComponent = processDataPageAttributes(processedComponent, currentPageID)
 
 			delete(visited, componentKey)
 
@@ -376,6 +506,233 @@ func processIncludes(content string, cfg *siteconfig.SiteConfig, opts *BuildOpti
 
 	result.WriteString(content[lastIndex:])
 	return result.String(), nil
+}
+
+func injectComponentAssets(content string, componentAssets map[string]bool, cfg *siteconfig.SiteConfig, opts *BuildOptions) string {
+	if len(componentAssets) == 0 {
+		return content
+	}
+
+	// Collect CSS and JS links
+	var cssLinks []string
+	var jsLinks []string
+
+	for asset := range componentAssets {
+		if after, ok := strings.CutPrefix(asset, "css:"); ok {
+			componentName := after
+			// Use @styles path that will be resolved later
+			cssLinks = append(cssLinks, `<link rel="stylesheet" href="@styles/`+componentName+`.css">`)
+		} else if after0, ok0 := strings.CutPrefix(asset, "js:"); ok0 {
+			componentName := after0
+			// Use @scripts path that will be resolved later
+			jsLinks = append(jsLinks, `<script src="@scripts/`+componentName+`.js"></script>`)
+		}
+	}
+
+	// Inject CSS into <head> (before </head>)
+	if len(cssLinks) > 0 {
+		headPattern := regexp.MustCompile(`(?i)(</head>)`)
+		cssInjection := "    " + strings.Join(cssLinks, "\n    ") + "\n"
+		content = headPattern.ReplaceAllString(content, cssInjection+"$1")
+	}
+
+	// Inject JS before </body>
+	if len(jsLinks) > 0 {
+		bodyPattern := regexp.MustCompile(`(?i)(</body>)`)
+		jsInjection := "    " + strings.Join(jsLinks, "\n    ") + "\n"
+		content = bodyPattern.ReplaceAllString(content, jsInjection+"$1")
+	}
+
+	return content
+}
+
+func processDataPageAttributes(content string, currentPageID string) string {
+	// Pattern to match tags with data-page attribute
+	// Matches: <tag ... data-page="value" ...> or <tag data-page="value" ...>
+	dataPagePattern := regexp.MustCompile(`(<[^>]*\s+)data-page\s*=\s*"([^"]*)"([^>]*>)`)
+
+	return dataPagePattern.ReplaceAllStringFunc(content, func(match string) string {
+		submatch := dataPagePattern.FindStringSubmatch(match)
+		if len(submatch) >= 4 {
+			beforeAttr := submatch[1]
+			dataPageValue := submatch[2]
+			afterAttr := submatch[3]
+
+			// Check if data-page value matches current page ID
+			if currentPageID != "" && dataPageValue == currentPageID {
+				// Check if class attribute already exists in the tag
+				fullTag := beforeAttr + afterAttr
+				classPattern := regexp.MustCompile(`class\s*=\s*"([^"]*)"`)
+				if classMatch := classPattern.FindString(fullTag); classMatch != "" {
+					// Extract existing class value
+					classSubmatch := classPattern.FindStringSubmatch(fullTag)
+					if len(classSubmatch) > 1 {
+						existingClass := classSubmatch[1]
+						if !strings.Contains(existingClass, "active") {
+							newClass := existingClass + " active"
+							// Replace the class attribute
+							result := classPattern.ReplaceAllString(fullTag, `class="`+newClass+`"`)
+							return result
+						}
+						// active already exists, just remove data-page
+						return fullTag
+					}
+				}
+				// No class attribute, add it before the closing >
+				return beforeAttr + `class="active"` + afterAttr
+			}
+			// Doesn't match or no currentPageID, just remove data-page attribute
+			return beforeAttr + afterAttr
+		}
+		return match
+	})
+}
+
+func resolvePaths(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
+	outputDir := filepath.Join(opts.RootDir, cfg.OutputDir)
+
+	return filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		// Only process .html, .css, and .js files
+		ext := filepath.Ext(path)
+		if ext != ".html" && ext != ".css" && ext != ".js" {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		// Get the directory of the current file relative to outputDir
+		relPath, err := filepath.Rel(outputDir, path)
+		if err != nil {
+			return err
+		}
+		currentDir := filepath.Dir(relPath)
+		if currentDir == "." {
+			currentDir = ""
+		}
+
+		contentStr := string(content)
+		modified := false
+
+		// Helper function to calculate relative path from current file to target
+		calculateRelativePath := func(targetPath string) string {
+			// If currentDir is empty (file is at root), targetPath is already relative
+			if currentDir == "" {
+				return targetPath
+			}
+			// Calculate relative path from current file's directory to target
+			rel, err := filepath.Rel(currentDir, targetPath)
+			if err != nil {
+				return targetPath
+			}
+			// Normalize path separators for web (use forward slashes)
+			return filepath.ToSlash(rel)
+		}
+
+		// Resolve @assets paths
+		assetsPattern := regexp.MustCompile(`@assets(/[^"'\s>)]*)`)
+		if assetsPattern.MatchString(contentStr) {
+			contentStr = assetsPattern.ReplaceAllStringFunc(contentStr, func(match string) string {
+				submatch := assetsPattern.FindStringSubmatch(match)
+				if len(submatch) > 1 {
+					targetPath := "assets" + submatch[1]
+					return calculateRelativePath(targetPath)
+				}
+				return match
+			})
+			modified = true
+		}
+
+		// Resolve @posts paths
+		postsPattern := regexp.MustCompile(`@posts(/[^"'\s>)]*)`)
+		if postsPattern.MatchString(contentStr) {
+			contentStr = postsPattern.ReplaceAllStringFunc(contentStr, func(match string) string {
+				submatch := postsPattern.FindStringSubmatch(match)
+				if len(submatch) > 1 {
+					targetPath := "posts" + submatch[1]
+					return calculateRelativePath(targetPath)
+				}
+				return match
+			})
+			modified = true
+		}
+
+		// Resolve @styles paths
+		stylesPattern := regexp.MustCompile(`@styles(/[^"'\s>)]*)`)
+		if stylesPattern.MatchString(contentStr) {
+			contentStr = stylesPattern.ReplaceAllStringFunc(contentStr, func(match string) string {
+				submatch := stylesPattern.FindStringSubmatch(match)
+				if len(submatch) > 1 {
+					targetPath := "styles" + submatch[1]
+					return calculateRelativePath(targetPath)
+				}
+				return match
+			})
+			modified = true
+		}
+
+		// Resolve @scripts paths
+		scriptsPattern := regexp.MustCompile(`@scripts(/[^"'\s>)]*)`)
+		if scriptsPattern.MatchString(contentStr) {
+			contentStr = scriptsPattern.ReplaceAllStringFunc(contentStr, func(match string) string {
+				submatch := scriptsPattern.FindStringSubmatch(match)
+				if len(submatch) > 1 {
+					targetPath := "scripts" + submatch[1]
+					return calculateRelativePath(targetPath)
+				}
+				return match
+			})
+			modified = true
+		}
+
+		// Resolve @pages paths (special handling: pages/index -> root, pages/{other} -> {other})
+		pagesPattern := regexp.MustCompile(`@pages(/[^"'\s>)]*)`)
+		if pagesPattern.MatchString(contentStr) {
+			contentStr = pagesPattern.ReplaceAllStringFunc(contentStr, func(match string) string {
+				submatch := pagesPattern.FindStringSubmatch(match)
+				if len(submatch) > 1 {
+					pagePath := submatch[1]
+					pagePath = strings.TrimPrefix(pagePath, "/")
+					parts := strings.Split(pagePath, "/")
+
+					var targetPath string
+					if len(parts) > 0 && parts[0] == "index" {
+						// pages/index/... -> root level
+						if len(parts) > 1 {
+							targetPath = strings.Join(parts[1:], "/")
+						} else {
+							targetPath = "index.html"
+						}
+					} else if len(parts) > 0 {
+						// pages/{other}/... -> {other}/...
+						targetPath = pagePath
+					} else {
+						return match
+					}
+
+					return calculateRelativePath(targetPath)
+				}
+				return match
+			})
+			modified = true
+		}
+
+		if modified {
+			return os.WriteFile(path, []byte(contentStr), info.Mode())
+		}
+
+		return nil
+	})
 }
 
 func copyFile(src, dst string, mode os.FileMode) error {

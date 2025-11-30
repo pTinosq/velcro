@@ -2,6 +2,7 @@
     <!-- The data-page attribute will set class="active" on the current page -->
     <!-- Velcro handles this automatically for you. -->
 
-    <!-- When styling just use: div:has(.active) { ... } -->
-    <a href="/" data-page="index">Home</a>
+    <!-- When styling just use: nav > a.active { ... } -->
+    <a href="@pages/index/index.html" data-page="index">Home</a>
+    <a href="@pages/about/index.html" data-page="about">About</a>
 </nav>

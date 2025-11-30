@@ -6,6 +6,7 @@ nav {
     border-bottom: 1px solid #e0e0e0;
 }
 
-nav:has(.active) {
+nav>a.active {
     text-decoration: underline;
+    color: #0f0;
 }
