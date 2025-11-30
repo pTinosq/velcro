@@ -44,6 +44,13 @@ func Run(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
 		return err
 	}
 
+	slog.Info("Building pages...")
+	err = buildPages(cfg, opts)
+	if err != nil {
+		slog.Error("Failed to build pages", "error", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -101,6 +108,43 @@ func buildStyles(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
 
 	// Copy all styles using processDirectory
 	return processDirectory(absoluteStylesDir, outputStylesDir, cfg, opts)
+}
+
+func buildPages(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
+	pagesDir := cfg.Dirs.Pages
+	absolutePagesDir := filepath.Join(opts.RootDir, pagesDir)
+
+	pages, err := os.ReadDir(absolutePagesDir)
+	if err != nil {
+		return err
+	}
+
+	for _, page := range pages {
+		if page.IsDir() {
+			sourcePageDir := filepath.Join(absolutePagesDir, page.Name())
+
+			var outputPageDir string
+			if page.Name() == "index" {
+				// index page goes to the root of the output directory
+				outputPageDir = filepath.Join(opts.RootDir, cfg.OutputDir)
+			} else {
+				// other pages go to {outputDir}/{pageName}
+				outputPageDir = filepath.Join(opts.RootDir, cfg.OutputDir, page.Name())
+			}
+
+			err := os.MkdirAll(outputPageDir, 0755)
+			if err != nil {
+				return err
+			}
+
+			err = processDirectory(sourcePageDir, outputPageDir, cfg, opts)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func buildPosts(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
@@ -179,6 +223,65 @@ func processHTMLFile(src, dst string, cfg *siteconfig.SiteConfig, opts *BuildOpt
 		return err
 	}
 
+	// Check if this HTML file is from posts or pages directory
+	absolutePostsDir := filepath.Join(opts.RootDir, cfg.Dirs.Posts)
+	absolutePagesDir := filepath.Join(opts.RootDir, cfg.Dirs.Pages)
+
+	isFromPostsOrPages := false
+	if relPath, err := filepath.Rel(absolutePostsDir, src); err == nil && !strings.HasPrefix(relPath, "..") {
+		isFromPostsOrPages = true
+	}
+	if !isFromPostsOrPages {
+		if relPath, err := filepath.Rel(absolutePagesDir, src); err == nil && !strings.HasPrefix(relPath, "..") {
+			isFromPostsOrPages = true
+		}
+	}
+
+	// If from posts or pages, merge with base.html
+	if isFromPostsOrPages {
+		baseHTMLPath := filepath.Join(opts.RootDir, cfg.BaseHTML)
+		baseContent, err := os.ReadFile(baseHTMLPath)
+		if err != nil {
+			return fmt.Errorf("failed to read base.html: %w", err)
+		}
+
+		pageContent := string(content)
+		baseHTML := string(baseContent)
+
+		// Extract <head> content from page/post (everything between <head> and </head>)
+		headPattern := regexp.MustCompile(`(?i)<head(\s[^>]*)?>([\s\S]*?)</head>`)
+		headMatches := headPattern.FindStringSubmatch(pageContent)
+		var pageHeadContent string
+		if len(headMatches) > 2 {
+			pageHeadContent = headMatches[2]
+		}
+
+		// Extract <body> content from page/post (everything between <body> and </body>)
+		bodyPattern := regexp.MustCompile(`(?i)<body(\s[^>]*)?>([\s\S]*?)</body>`)
+		bodyMatches := bodyPattern.FindStringSubmatch(pageContent)
+		var pageBodyContent string
+		if len(bodyMatches) > 2 {
+			pageBodyContent = bodyMatches[2]
+		}
+
+		// Merge head content into base.html's head
+		if pageHeadContent != "" {
+			baseHeadPattern := regexp.MustCompile(`(?i)(<head(\s[^>]*)?>)([\s\S]*?)(</head>)`)
+			baseHTML = baseHeadPattern.ReplaceAllString(baseHTML, "${1}${3}"+pageHeadContent+"${4}")
+		}
+
+		// Merge body content into base.html's body (replace @content placeholder)
+		if pageBodyContent != "" {
+			contentIncludePattern := regexp.MustCompile(`<!--\s*include\s*=\s*"@content"\s*-->`)
+			if !contentIncludePattern.MatchString(baseHTML) {
+				return fmt.Errorf("base.html does not contain @content placeholder")
+			}
+			baseHTML = contentIncludePattern.ReplaceAllString(baseHTML, pageBodyContent)
+		}
+
+		content = []byte(baseHTML)
+	}
+
 	visited := make(map[string]bool)
 	processed, err := processIncludes(string(content), cfg, opts, visited, filepath.Dir(src))
 	if err != nil {
@@ -236,6 +339,7 @@ func processIncludes(content string, cfg *siteconfig.SiteConfig, opts *BuildOpti
 		}
 
 		if after, ok := strings.CutPrefix(includePath, "@components/"); ok {
+			slog.Debug("Processing component", "component", after)
 			componentName, _ := strings.CutSuffix(after, ".html")
 
 			componentsDir := filepath.Join(opts.RootDir, cfg.Dirs.Components)
