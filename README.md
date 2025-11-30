@@ -4,9 +4,13 @@
 
 # Velcro - an explicit, minimal WYSIWYG SSG
 
+## Retired
+
+My work has engulfed my life (in a good way, don't worry) which means I struggle to put good time and effort into these side projects. It's a shame but it is worth it. I love my job and I want to focus on executing there in the best way possible.
+
 ## Why Velcro?
 
-_**Velcro work FOR YOU**_.
+_**Velcro works FOR YOU**_.
 
 We are entering an era where framework fatigue is getting real. We are tired of concering over hooks, state, templates, shortcodes, and other bullsh\*t created to one-up competiton. Websites have gotten slower and slower and increasingly indistinguishable. We have lost our individuality as developers - everyone is using the same three UI component libraries, or the same three Hugo templates. Express yourselves, a bit of CSS is fun.
 
