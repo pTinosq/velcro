@@ -17,7 +17,90 @@ type BuildOptions struct {
 
 func Run(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
 	slog.Info("Building posts...")
-	return buildPosts(cfg, opts)
+	err := buildPosts(cfg, opts)
+	if err != nil {
+		slog.Error("Failed to build posts", "error", err)
+		return err
+	}
+
+	slog.Info("Building assets...")
+	err = buildAssets(cfg, opts)
+	if err != nil {
+		slog.Error("Failed to build assets", "error", err)
+		return err
+	}
+
+	slog.Info("Building scripts...")
+	err = buildScripts(cfg, opts)
+	if err != nil {
+		slog.Error("Failed to build scripts", "error", err)
+		return err
+	}
+
+	slog.Info("Building styles...")
+	err = buildStyles(cfg, opts)
+	if err != nil {
+		slog.Error("Failed to build styles", "error", err)
+		return err
+	}
+
+	return nil
+}
+
+func buildAssets(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
+	assetsDir := cfg.Dirs.Assets
+	absoluteAssetsDir := filepath.Join(opts.RootDir, assetsDir)
+
+	if _, err := os.Stat(absoluteAssetsDir); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Create output assets directory
+	outputAssetsDir := filepath.Join(opts.RootDir, cfg.OutputDir, "assets")
+	err := os.MkdirAll(outputAssetsDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	return processDirectory(absoluteAssetsDir, outputAssetsDir, cfg, opts)
+}
+
+func buildScripts(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
+	scriptsDir := cfg.Dirs.Scripts
+	absoluteScriptsDir := filepath.Join(opts.RootDir, scriptsDir)
+
+	if _, err := os.Stat(absoluteScriptsDir); os.IsNotExist(err) {
+		return nil
+	}
+
+	outputScriptsDir := filepath.Join(opts.RootDir, cfg.OutputDir, "scripts")
+	err := os.MkdirAll(outputScriptsDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	return processDirectory(absoluteScriptsDir, outputScriptsDir, cfg, opts)
+}
+
+func buildStyles(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
+	stylesDir := cfg.Dirs.Styles
+	absoluteStylesDir := filepath.Join(opts.RootDir, stylesDir)
+
+	// Check if styles directory exists
+	if _, err := os.Stat(absoluteStylesDir); os.IsNotExist(err) {
+		// Styles directory doesn't exist, nothing to copy
+		return nil
+	}
+
+	// Create output styles directory
+	outputStylesDir := filepath.Join(opts.RootDir, cfg.OutputDir, "styles")
+	err := os.MkdirAll(outputStylesDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	// Copy all styles using processDirectory
+	return processDirectory(absoluteStylesDir, outputStylesDir, cfg, opts)
 }
 
 func buildPosts(cfg *siteconfig.SiteConfig, opts *BuildOptions) error {
